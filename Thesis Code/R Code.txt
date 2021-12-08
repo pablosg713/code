@@ -1,0 +1,804 @@
+## PHYLSIM Package:
+## Uses some functions adapted from pcmabc and yuima
+
+.f_rate_const<-function(x,params=NULL,...){
+    res<-NA
+    if (!is.null(params)){
+	if (is.list(params)){
+	    if (!is.null(params$rate)){res<-params$rate}
+	    if (!is.null(params$switch)){
+		if (x[2]>params$switch){res<-params$rate2}
+	    }
+	}	
+	else{
+	    if (is.numeric(params)){res<-params}
+	}
+    }
+    if (res<0) {res<-NA}
+    res
+}
+
+.f_rate_id<-function(x,params=NULL,...){
+    res<-x[2]
+    if (!is.null(params)){
+	if (!is.null(params$varnum)){res<-x[params$varnum]}
+	if (!is.null(params$substractbase)){res<-max(0,res-params$substractbase)}
+	res<-abs(res)
+	if (is.null(params$raise.at.end)||!params$raise.at.end){if (!is.null(params$p)){res<-res^params$p}}
+	if (!is.null(params$base)){	    
+	    if (!is.null(params$const)){
+		if (res<params$base){res<-params$const}
+	    }else{if (res<params$base){res<-0}}
+	}
+	if (!is.null(params$invbase)){	    
+	    if (!is.null(params$const)){
+		if (res>params$invbase){res<-params$const}
+	    }else{if (res>params$invbase){res<-0}}
+	}
+	if (!is.null(params$scale)){res<-res/params$scale}
+	if (!is.null(params$raise.at.end)&&params$raise.at.end){if (!is.null(params$p)){res<-res^params$p}}
+	res<-abs(res)
+	if (!is.null(params$maxval)){
+	    if (is.nan(res)||is.infinite(res)){res<-params$maxval}
+	    if(res>params$maxval){res<-params$maxval}
+	}
+    }
+    abs(res)
+} 
+
+.f_rate_poly_diff_2<-function(x,params=NULL,...){
+    res<-abs(x[2]-x[3])
+    if (!is.null(params)){
+	if (!is.null(params$varnum)){res<-abs(x[params$varnum[1]]-x[params$varnum[2]])}
+	res<-abs(res)
+	if (is.null(params$raise.at.end)||!params$raise.at.end){if (!is.null(params$p)){res<-res^params$p}}
+	if (!is.null(params$substractbase)){res<-max(0,res-params$substractbase)}
+	if (!is.null(params$base)){	    
+	    if (!is.null(params$const)){
+		if (res<params$base){res<-params$const}
+	    }else{if (res<params$base){res<-0}}
+	}
+	if (!is.null(params$invbase)){	    
+	    if (!is.null(params$const)){
+		if (res>params$invbase){res<-params$const}
+	    }else{if (res>params$invbase){res<-0}}
+	}
+	if (!is.null(params$scale)){res<-res/params$scale}
+	if (!is.null(params$raise.at.end)&&params$raise.at.end){if (!is.null(params$p)){res<-res^params$p}}
+	res<-abs(res)
+	if (!is.null(params$maxval)){
+	    if (is.nan(res)||is.infinite(res)){res<-params$maxval}
+            if(res>params$maxval){res<-params$maxval}
+        }
+    }
+    else{res<-(res)^2}
+    abs(res)
+}
+
+
+.f_rate_OU2d_optim_diff<-function(x,params=NULL,sde.params=NULL){
+    res<-0
+    if (!is.null(params)&&!is.null(sde.params)	){
+	if (!is.null(sde.params)){
+	    if (is.null(params$revpredictor) || !params$revpredictor){
+		if (!(is.null(sde.params$a11)||is.null(sde.params$a12)||is.null(sde.params$psi1)||is.null(sde.params$psi2))){
+		    res<-abs(x[2]-((-1)*sde.params$a12*x[3]/sde.params$a11+sde.params$psi1+sde.params$a12*sde.params$psi2/sde.params$a11))
+		}
+	    }else{
+		if (!(is.null(sde.params$a22)||is.null(sde.params$a21)||is.null(sde.params$psi1)||is.null(sde.params$psi2))){
+		    res<-abs(x[3]-((-1)*sde.params$a21*x[2]/sde.params$a22+sde.params$psi2+sde.params$a21*sde.params$psi1/sde.params$a22))
+		}
+	    }	    
+	}
+	if (!is.null(params$substractbase)){res<-max(0,res-params$substractbase)}
+	if (!is.null(params$base)){	    
+	    if (!is.null(params$const)){
+		if (res<params$base){res<-params$const}
+	    }else{if (res<params$base){res<-0}}
+	}
+	if (!is.null(params$invbase)){	    
+	    if (!is.null(params$const)){
+		if (res>params$invbase){res<-params$const}
+	    }else{if (res>params$invbase){res<-0}}
+	}
+	if (!is.null(params$scale)){res<-res/params$scale}
+	if (!is.null(params$p)){res<-res^params$p}else{res<-res^2}
+	res<-abs(res)
+	if (!is.null(params$maxval)){
+	    if (is.nan(res)||is.infinite(res)){res<-params$maxval}
+            if(res>params$maxval){res<-params$maxval}
+        }
+    }
+    abs(res)
+}
+
+
+simulate_sde_on_branch<-function(branch.length,model.yuima,X0,step){
+    numsteps<-branch.length/step
+    options(warn= -1) 
+    samp<-yuima::setSampling(Terminal=branch.length, n=numsteps)
+    simulobj.yuima <- yuima::setYuima(model=model.yuima, sampling=samp)
+    simulobj.yuima <- yuima::simulate(simulobj.yuima, xinit=X0,space.discretized=TRUE)
+    time.grid.length<-length(simulobj.yuima@sampling@grid[[1]])
+    options(warn= 0)
+    
+    sdedim<-length(X0)
+    
+    trait_data<-NA
+    if (is.element(".Data",methods::slotNames(simulobj.yuima@data@original.data))){
+	trait_data<-simulobj.yuima@data@original.data@.Data
+	time_data<-simulobj.yuima@sampling@grid[[1]]
+    }else{
+	if (length(X0)==1){
+	    time_data<-attributes(simulobj.yuima@data@original.data)$index 
+	    trait_data<-c(simulobj.yuima@data@original.data)
+	    class(trait_data)<-"numeric"
+	    names(trait_data)<-NULL
+	    
+	    vtorem<-which(time_data>branch.length)
+	    if (length(vtorem)>0){
+		trait_data<-trait_data[-vtorem]
+		time_data<-time_data[-vtorem]
+	    }
+	    time.grid.length<-length(time_data)
+	}else{
+	    stop("Cannot extract simulated by yuima phenotypic data on branch")
+	}	
+    }
+    timepoints<-length(trait_data)/sdedim
+    if (timepoints!=time.grid.length){warning("Error in Yuima, wrong lengths of grid")}
+    rbind(time_data[1:timepoints],matrix(trait_data,ncol=timepoints,byrow=TRUE))
+}
+
+.simulate_phenotype_on_branch<-function(branch.length,fsimulphenotype,simul.params,X0,step){
+    res<-matrix(c(0,X0),ncol=1)
+    if (branch.length>=step){
+	systime<-as.numeric(Sys.time()); set.seed((systime - floor(systime)) * 1e8); 
+	res<-fsimulphenotype(branch.length,simul.params,X0,step)
+    }
+    res
+}
+
+
+.f_phenotype_variance_on_branch<-function(branch.length,simul.params,X0,step){
+    X0<-X0[1]
+    mphenotype<-simul.params$fsimulphenotype(branch.length,simul.params$funcparams,X0,step)
+    if (simul.params$n>1){
+	lphenotype<-replicate(simul.params$n-1,simul.params$fsimulphenotype(branch.length,simul.params$funcparams,X0,step)[-1,],simplify=FALSE)
+	for (i in 1:length(lphenotype)){
+	    mphenotype<-rbind(mphenotype,lphenotype[[1]])
+	}
+    }
+    rbind(mphenotype[1,],apply(mphenotype[-1,],2,mean),apply(mphenotype[-1,],2,var))
+}
+
+simulate_phenotype_on_tree<-function(phyltree,fsimulphenotype,simul.params,X0,step){
+    if ((!is.function(fsimulphenotype))&&(is.character(fsimulphenotype))&&(fsimulphenotype=="sde.yuima")){fsimulphenotype<-simulate_sde_on_branch}
+    numbranch<-nrow(phyltree$edge)
+    root.branch.phenotype<-matrix(c(0,X0),ncol=1)
+    if (!is.null(phyltree$root.edge)){
+	root.branch.phenotype<-.simulate_phenotype_on_branch(phyltree$root.edge,fsimulphenotype,simul.params,X0,step)
+	X0<-root.branch.phenotype[-1,ncol(root.branch.phenotype)]
+    }else{
+	phyltree$root.edge<-0
+    }
+    lphenotype=vector("list",numbranch)
+    vBranchToSim<-rep(1,numbranch) ## we do not assume that we can have a forest
+    RootId<-length(phyltree$tip.label)+1
+    vEdgesFromRoot<-which(phyltree$edge[,1]==RootId)
+    mBranchQueue<-matrix(c(vEdgesFromRoot[1],X0),ncol=1,nrow=1+length(X0))
+    if (length(vEdgesFromRoot)>1){
+	for (j in 2:length(vEdgesFromRoot)){
+	    mBranchQueue<-cbind(mBranchQueue,c(vEdgesFromRoot[j],X0))
+	}
+    }
+    while(sum(vBranchToSim)>0){
+	EdgeToSim<-mBranchQueue[1,1]
+	lphenotype[[EdgeToSim]]<-.simulate_phenotype_on_branch(phyltree$edge.length[EdgeToSim],fsimulphenotype,simul.params,mBranchQueue[-1,1],step)
+	vEdgesFromBranch<-which(phyltree$edge[,1]==phyltree$edge[EdgeToSim,2])
+	if (length(vEdgesFromBranch)>0){
+	    for (Edge in vEdgesFromBranch){
+		mBranchQueue<-cbind(mBranchQueue,c(Edge,lphenotype[[EdgeToSim]][-1,ncol(lphenotype[[EdgeToSim]])]))
+	    }
+	}
+	if (ncol(mBranchQueue)==1){mBranchQueue<-NULL}
+	else{
+	    bOneBranch<-FALSE
+	    if (ncol(mBranchQueue)==2){bOneBranch<-TRUE}
+	    mBranchQueue<-mBranchQueue[,-1]
+	    if (bOneBranch){mBranchQueue<-matrix(mBranchQueue,ncol=1)}
+	}
+	vBranchToSim[EdgeToSim]<-0
+    }
+    bHeightRev<-FALSE
+    if (is.null(phyltree$node.heights)){
+	phyltree$node.heights<-cbind(1:(phyltree$Nnode+length(phyltree$tip.label)),node.depth.edgelength(phyltree)+phyltree$root.edge)
+	bHeightRev<-TRUE
+    }
+    if (is.null(phyltree$tree.height)){phyltree$tree.height<-phyltree$node.heights[1,2]}
+    if (bHeightRev){phyltree$node.heights[,2]<-phyltree$tree.height-phyltree$node.heights[,2]}
+    if (is.null(phyltree$node.label)){phyltree$node.label<-RootId:(RootId+phyltree$Nnode)}
+    list(tree=phyltree,phenotype=lphenotype,root.branch.phenotype=root.branch.phenotype)
+}
+
+PCM_ABC<-function(phyltree,phenotypedata,par0,phenotype.model,fbirth,fdeath=NULL,X0=NULL,step=NULL,abcsteps=200,eps=0.25,fupdate="standard",typeprintprogress="dist",tree.fixed=FALSE,dist_method=c("variancemean","wRFnorm.dist")){
+    if (tree.fixed){dist_method[2]<-NA}
+    
+    if (( is.null(fupdate)) || (is.character(fupdate) && (fupdate=="standard"))){fupdate<-.f_standard_update}
+    tree.height<-max(ape::node.depth.edgelength(phyltree))
+    if (!is.null(phyltree$root.edge)){tree.height<-tree.height+phyltree$root.edge}
+    n<-nrow(phenotypedata) 
+    paramsaccepted<-c()
+    if (is.null(X0)){
+	X0<-apply(phenotypedata,2,mean)
+    }
+    par<-par0
+    for (j in 1:length(par)){
+	par[[j]]$fixed<-NULL;par[[j]]$abcstepsd<-NULL;par[[j]]$positivevars<-NULL
+    }
+    par.estim<-par
+    for (j in 1:length(par.estim)){
+		for (k in 1:length(par.estim[[j]])){
+			    par.estim[[j]][[k]]<-0
+		}
+	}
+
+    totaldist<-0
+    invtotaldist<-0
+    
+    if (is.character(fbirth)){
+	if (fbirth=="rate_id"){fbirth<-.f_rate_id}
+	else{if (fbirth=="rate_const"){fbirth<-.f_rate_const}}
+    }
+    
+     if (is.character(fbirth)){
+	fbirth<-switch(fbirth,
+    	    rate_id=.f_rate_id,
+            rate_const=.f_rate_const,
+            OU2d_optim_diff=.f_rate_OU2d_optim_diff,
+            poly_diff_2=.f_rate_poly_diff_2)
+    }
+    
+    for (i in 1:abcsteps){	
+	if (!is.null(par$phenotype.model.params)){simul.params<-par$phenotype.model.params}
+	else{stop("No parameters provided to simulate the phenotype (par$phenotype.model.params is NULL).")}
+        if (!is.null(par$birth.params)){birth.params<-par$birth.params}
+	death.params<-NULL
+	if (is.null(fdeath)){n.tips.total<-n}
+	else{
+	    if (!is.null(par$death.params)){death.params<-par$death.params}
+	    n.tips.total<- -1 
+	} 
+    	
+    	ABCdist<-1000+1000*eps
+    	baccept<-FALSE
+    	tryCatch({
+    	    if (!tree.fixed){
+    		simdata<-simulate_phylproc(tree.height=tree.height,simul.params=simul.params,X0=X0,fbirth=fbirth,fdeath=fdeath,fbirth.params=birth.params,fdeath.params=death.params,fsimulphenotype=phenotype.model,n.contemporary=n,n.tips.total=n.tips.total,step=step)	
+    	    }
+    	    if (tree.fixed){
+    		simdata<-simulate_phenotype_on_tree(phyltree,fsimulphenotype=phenotype.model,simul.params=simul.params,X0=X0,step=step)
+    	    }
+    	    simphenotypedata<-get_phylogenetic_sample(simdata)
+	    ## tree.fixed not relevant if tree is fixed, then distance is 0 anyway
+	    ABCdist<-.calc_ABCdist(simdata$tree,phyltree,simphenotypedata,phenotypedata,dist_method)
+	    if (ABCdist < eps){baccept<-TRUE}
+
+	    if (!is.null(typeprintprogress)){
+		if (is.function(typeprintprogress)){typeprintprogress(i,ABCdist,par)}
+		else{.f_printprogress(typeprintprogress,i,ABCdist,par)}}
+	    if(baccept){
+		paramsaccepted[[length(paramsaccepted)+1]]<-par
+		paramsaccepted[[length(paramsaccepted)]]$distance.from.data<-ABCdist
+		totaldist<-totaldist+ABCdist
+		if (ABCdist==0){ABCdist<-1e-13}
+		paramsaccepted[[length(paramsaccepted)]]$inv.distance.from.data<-1/ABCdist
+		invtotaldist<-invtotaldist+1/ABCdist		
+	    }
+	    par<-fupdate(par,par0,baccept,ABCdist,phenotypedata,phyltree)
+	    if (baccept){
+		for (j in 1:length(par)){
+		    for (k in 1:length(par[[j]])){
+			if ((names(par[[j]])[k]!="fixed") && (names(par[[j]])[k]!="abcstepsd") && (names(par[[j]])[k]!="positivevars")){
+			    	    par.estim[[j]][[k]]<-par.estim[[j]][[k]]+par[[j]][[k]]*paramsaccepted[[length(paramsaccepted)]]$inv.distance.from.data
+			}
+		    }
+		}
+	    }
+	},error=function(e){print(paste("Error in simulating phenotype or phylogeny",e))})
+    }
+    
+    for (j in 1:length(par.estim)){
+	for (k in 1:length(par.estim[[j]])){
+	    if ((is.null(par0[[j]]$fixed) || (!par0[[j]]$fixed[k]))){			
+		if ((names(par.estim[[j]])[k]!="fixed") && (names(par.estim[[j]])[k]!="abcstepsd")){
+		    par.estim[[j]][[k]]<-par.estim[[j]][[k]]/invtotaldist
+		    
+		}
+	    }
+	    if (!(is.null(par0[[j]]$fixed)) && (par0[[j]]$fixed[k])){			
+		if ((names(par.estim[[j]])[k]!="fixed") && (names(par.estim[[j]])[k]!="abcstepsd")){
+		    par.estim[[j]][[k]]<-par0[[j]][[k]]
+		}
+	    }
+	}
+    }
+    list(param.estimate=par.estim, all.accepted=paramsaccepted,sum.dists.from.data=totaldist,sum.inv.dists.from.data=invtotaldist)
+}
+
+get_phylogenetic_sample<-function(pcmabc_simulobj,bOnlyContemporary=FALSE,tol=.Machine$double.eps^0.5){
+    
+    vTipNodes<-NA
+    if (bOnlyContemporary){
+        vTipNodes<-which(sapply(pcmabc_simulobj[[1]]$node.heights,function(x,tol){isTRUE(all.equal(x,0,tolerance=tol))},tol=tol,simplify=TRUE))
+    }else{
+	vTipNodes<-setdiff(unique(pcmabc_simulobj[[1]]$edge[,2]),unique(pcmabc_simulobj[[1]]$edge[,1]))
+    }
+    vTipedges<-sapply(vTipNodes,function(x,mTreeEdge){which(mTreeEdge[,2]==x)},mTreeEdge=pcmabc_simulobj[[1]]$edge,simplify=TRUE)
+    
+    mContemporarySample<-t(sapply(vTipedges,function(i,lphenotype){
+	lphenotype[[i]][-1,ncol(lphenotype[[i]])]
+    },lphenotype=pcmabc_simulobj[[2]],simplify=TRUE))
+    if (nrow(mContemporarySample)==1){mContemporarySample<-t(mContemporarySample)}
+    mContemporarySample
+}
+
+.calc_phyl_dist<-function(tree1,tree2,method="node_heights"){
+    tree_dist<-0
+    
+    if (!is.na(method)){
+	if (method!="bdcoeffs"){
+	    tryCatch({tree1<-ape::drop.fossil(tree1)},error=function(e){e<-NULL;e})
+	    tryCatch({tree2<-ape::drop.fossil(tree2)},error=function(e){e<-NULL;e})
+        }
+        
+        if ((method!="bdcoeffs") && (method!="node_heights")){
+    	    common_tip_labels<-intersect(1:length(tree1$tip.label),1:length(tree2$tip.label))
+	    
+	    vtips_del1<-setdiff(1:length(tree1$tip.label),common_tip_labels)
+    	    if (length(vtips_del1)>0){tree1<-ape::drop.tip(tree1,vtips_del1)}
+    	    
+    	    vtips_del2<-setdiff(1:length(tree2$tip.label),common_tip_labels)
+    	    if (length(vtips_del2)>0){tree2<-ape::drop.tip(tree2,vtips_del2)}
+    	    if (!is.null(tree1) && !is.null(tree2)) {tree1$tip.label<-tree2$tip.label}
+    	}
+	if (is.null(tree1) || is.null(tree2)) {return(NA)}
+	
+	if (method=="BHV"){
+	    if (requireNamespace("distory",quietly=TRUE)){ 
+		ltre<-list(tree1,tree2)
+		class(ltre)<-"multiPhylo"
+		tree_dist<-distory::dist.multiPhylo(ltre,method="geodesic")[[1]] 
+	    }else{method<-"wRFnorm.dist"}
+	}
+	if (method=="BHVedge"){
+	    if (requireNamespace("distory",quietly=TRUE)){ 
+		ltre<-list(tree1,tree2)
+		class(ltre)<-"multiPhylo"
+		tree_dist<-distory::dist.multiPhylo(ltre,method="edgeset")[[1]] 
+	    }else{method<-"RF.dist"}
+	}    
+
+	if ((method=="node_heights")||(method=="logweighted_node_heights")){
+	    s1<-sort(ape::node.depth.edgelength(tree1),decreasing = TRUE)
+	    s2<-sort(ape::node.depth.edgelength(tree2),decreasing = TRUE)
+	    s1<-s1/s1[1]
+	    s2<-s2/s2[1]
+	    n<-min(length(s1),length(s2))
+
+	    vtokeep<-which(sapply(s1[1:n]+s2[1:n],function(x){!isTRUE(all.equal(x,0))}))
+	    vdiff2<-((s1[vtokeep]-s2[vtokeep])/((s1[vtokeep]+s2[vtokeep])))^2
+	    if ((method=="logweighted_node_heights")&&(length(vtokeep)>2)){
+		vdiff2[3:length(vtokeep)]<-vdiff2[3:length(vtokeep)]/log(3:length(vtokeep))
+	    }
+	    tree_dist<-sqrt(mean(vdiff2))
+	}
+	if (method=="bdcoeffs"){
+	    if (requireNamespace("geiger",quietly=TRUE)){ 
+    		tree2_avg_rate<-geiger::bd.km(tree2)
+		tree1_avg_rate<-geiger::bd.km(tree1)
+	    }else{
+	  	tree2_avg_rate<-.geiger_bd.km(tree2)
+		tree1_avg_rate<-.geiger_bd.km(tree1)	    
+	    }
+	    L1<-max(c(tree1_avg_rate,tree2_avg_rate))
+	    L2<-min(c(tree1_avg_rate,tree2_avg_rate))
+	    if (L1!=L2){tree_dist<-0.5*((L2/L1)^(L2/(L1-L2)))*((L1-L2)/L1)}
+	}
+
+	if (method=="RF.dist"){
+	    tree_dist<-phangorn::RF.dist(tree1,tree2)
+	}
+	if (method=="wRF.dist"){
+	    tree_dist<-phangorn::wRF.dist(tree1,tree2,normalize=FALSE)
+	}
+	if (method=="wRFnorm.dist"){
+	    tree_dist<-phangorn::wRF.dist(tree1,tree2,normalize=TRUE)
+	}
+	if (method=="KF.dist"){
+	    tree1$tip.label<-tree2$tip.label[1:length(tree1$tip.label)]
+	    tree_dist<-phangorn::KF.dist(tree1,tree2)
+	}
+	if (method=="path.dist"){
+	    tree_dist<-phangorn::path.dist(tree1,tree2,use.weight=FALSE)
+	}
+	if (method=="path.dist.weights"){
+	    tree_dist<-phangorn::path.dist(tree1,tree2,use.weight=TRUE)
+	}
+	if (method=="dist.topo.KF1994"){
+	    tree_dist<-ape::dist.topo(tree1,tree2,method="score")
+	}
+    }
+    tree_dist
+}
+
+.calc_data_dist<-function(data1,data2,method="order"){
+## truedata is assumed to be data2, simulated data1
+    data_dist<-0
+    if (method=="order"){
+	m<-ncol(data1)
+	data1<-apply(data1,2,function(x){rev(x[order(abs(x))])})
+	data1<-matrix(data1,ncol=m)
+
+	m<-ncol(data2)
+	data2<-apply(data2,2,function(x){rev(x[order(abs(x))])})
+	data2<-matrix(data2,ncol=m)
+		
+	n<-min(nrow(data1),nrow(data2))
+	data1<-c(apply(data1[1:n,,drop=FALSE],2,function(x){x/max(abs(x),na.rm=TRUE)}))
+	data2<-c(apply(data2[1:n,,drop=FALSE],2,function(x){x/max(abs(x),na.rm=TRUE)}))	
+	vtokeep<-which(sapply(abs(data1)+abs(data2),function(x){!isTRUE(all.equal(x,0))&&!is.na(x)&&!is.infinite(x)&&!is.nan(x)}))
+	data1<-data1[vtokeep]
+	data2<-data2[vtokeep]
+	if ((length(data1)>0) && (length(data2)>0)){
+	    vdiff2<-((data1-data2)/(abs(data1)+abs(data2)))^2
+	    data_dist<-sqrt(mean(vdiff2,na.rm=TRUE))/2
+	}else{
+	    data_dist<-NA
+	    if ((length(data1)==0) && (length(data2)==0)){data_dist<-0}
+	}
+    }
+    if ((method=="variance")||(method=="variancemean")){
+	if (ncol(data1)==1){mC1<-matrix(stats::var(data1[,1],na.rm=TRUE),1,1)}else{mC1<-stats::cov(data1,use="pairwise.complete.obs")}
+	if (ncol(data2)==1){mC2<-matrix(stats::var(data2[,1],na.rm=TRUE),1,1)}else{mC2<-stats::cov(data2,use="pairwise.complete.obs")}
+
+	p<-min(nrow(mC1),nrow(mC2))
+	vC1<-c(mC1[1:p,1:p])
+	vC2<-c(mC2[1:p,1:p])
+	vtokeep<-which(sapply(abs(vC1)+abs(vC2),function(x){!isTRUE(all.equal(x,0))}))
+	vC1<-vC1[vtokeep]
+	vC2<-vC2[vtokeep]
+	vdiff2<-((vC1-vC2)/(abs(vC1)+abs(vC2)))^2
+	data_dist<-sqrt(mean(vdiff2))/2	
+    }
+    if (method=="variancemean"){
+	vm1<-apply(data1,2,base::mean,na.rm=TRUE)
+	vm2<-apply(data2,2,base::mean,na.rm=TRUE)
+	p<-min(length(vm1),length(vm2))
+	vm1<-c(vm1[1:p])
+	vm2<-c(vm2[1:p])
+	vtokeep<-which(sapply(abs(vm1)+abs(vm2),function(x){!isTRUE(all.equal(x,0))}))
+	vm1<-vm1[vtokeep]
+	vm2<-vm2[vtokeep]
+	vdiff2<-((vm1-vm2)/(abs(vm1)+abs(vm2)))^2
+	data_dist<-0.5*(data_dist+sqrt(mean(vdiff2))/2)
+    }
+
+    if (method=="bins"){
+        truedata<-data2
+        simdata<-data1
+        numbins<-2*as.integer(nrow(truedata)/30)+5
+	boundries<-apply(rbind(simdata,truedata),2,function(x,numbins){seq(from=min(x,na.rm=TRUE)-0.5,to=max(x,na.rm=TRUE)+0.5,length=numbins)},numbins=numbins)
+	if (ncol(simdata)==1){boundries<-list(boundries)}
+	if (!is.list(boundries)){
+	    boundries<-sapply(1:ncol(boundries),function(i,data){data[,i]},data=boundries,simplify=FALSE)	
+	}
+	simhist<-sapply(1:ncol(simdata),function(i,x,boundries){graphics::hist(x[,i],plot=FALSE,breaks=boundries[[i]])$counts/length(x[,i])},x=simdata,boundries=boundries,simplify=FALSE)
+	truehist<-sapply(1:ncol(truedata),function(i,x,boundries){graphics::hist(x[,i],plot=FALSE,breaks=boundries[[i]])$counts/length(x[,i])},x=truedata,boundries=boundries,simplify=FALSE)
+
+	if (is.null(weights)){weights<-rep(1/length(simhist),length(simhist))}
+	data_dist<-0.5*sum(sapply(1:length(simhist),function(i,x1,x2,w){w[i]*sum(abs(x1[[i]]-x2[[i]]))},x1=simhist,x2=truehist,w=weights,simplify=TRUE))
+
+    }
+    data_dist
+}
+
+.calc_ABCdist<-function(simtree,truetree,simdata,truedata,dist_method=c("variancemean","node_heights"),distfunc=.calc_separate_dist){
+	#save(simtree,truetree,simdata,truedata,dist_method,file="qpa.RData");stop()
+	distfunc(simtree,truetree,simdata,truedata,dist_method)
+}
+
+.calc_separate_dist<-function(simtree,truetree,simdata,truedata,dist_method=c("variancemean","node_heights")){
+	dist<-(.calc_phyl_dist(simtree,truetree,method=dist_method[2])+.calc_data_dist(simdata,truedata,method=dist_method[1]))
+	if (is.na(dist) || is.nan(dist) || is.infinite(dist)){dist<-100000} #normally the distance is scaled to lie in [0,1]
+	else{if (!is.na(dist_method[2])){dist<-dist/2}}
+	dist
+}
+
+.f_standard_update<-function(par,par0,baccept,ABCdist,...){
+    for (j in 1:length(par)){
+	for (k in 1:length(par[[j]])){
+	    if ((is.null(par0[[j]]$fixed) || (!par0[[j]]$fixed[k]))){			
+		if ((names(par[[j]])[k]!="fixed") && (names(par[[j]])[k]!="abcstepsd") && (names(par[[j]])[k]!="positivevars")){
+		    if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {par[[j]][[k]]<-log(par[[j]][[k]])}
+		    if(!baccept){
+		        minval<-10;maxval<-10
+		        if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {minval<-log(minval);maxval<-log(maxval)}
+		        par[[j]][[k]]<-stats::runif(1,min= (-1)*minval, max=maxval)
+		    }
+		    else{par[[j]][[k]]<-par[[j]][[k]]+stats::rnorm(1,sd=ABCdist*par0[[j]]$abcstepsd[k])}
+		    if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ){par[[j]][[k]]<-exp(par[[j]][[k]])}
+		}
+    	    }
+        }
+    }
+    par
+}
+
+
+.f_unifdraw_update<-function(par,par0,...){
+    for (j in 1:length(par)){
+	for (k in 1:length(par[[j]])){
+	    if ((is.null(par0[[j]]$fixed) || (!par0[[j]]$fixed[k]))){			
+		if ((names(par[[j]])[k]!="fixed") && (names(par[[j]])[k]!="abcstepsd") && (names(par[[j]])[k]!="positivevars")){
+		    if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {par[[j]][[k]]<-log(par[[j]][[k]])}
+		    minval<-10;maxval<-10
+		    if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {minval<-log(minval);maxval<-log(maxval)}
+		    par[[j]][[k]]<-stats::runif(1,min= (-1)*minval, max=maxval)
+		    if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ){par[[j]][[k]]<-exp(par[[j]][[k]])}
+		}
+    	    }
+        }
+    }
+    par
+}
+
+.f_ou1d_update<-function(par,par0,baccept,ABCdist,phenotypedata,...){
+    s2a<-stats::var(phenotypedata[,1])
+    adone<-FALSE
+    sdone<-FALSE    
+    for (j in 1:length(par)){
+	for (k in 1:length(par[[j]])){
+	    if ((is.null(par0[[j]]$fixed) || (!par0[[j]]$fixed[k]))){			
+	        if ((names(par[[j]])[k]!="fixed") && (names(par[[j]])[k]!="abcstepsd") && (names(par[[j]])[k]!="positivevars")){
+		    if ((adone || sdone)&&((names(par[[j]])[k]=="a") || (names(par[[j]])[k]=="s"))){
+			if (adone){par[[j]][[k]]<-s2a*2*par[[j]]$a+stats::rnorm(1,sd=ABCdist*par0[[j]]$abcstepsd[k])}
+			if (sdone){par[[j]][[k]]<-par[[j]]$s/(2*s2a)+stats::rnorm(1,sd=ABCdist*par0[[j]]$abcstepsd[k])}
+		    }else{
+			if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {par[[j]][[k]]<-log(par[[j]][[k]])}
+	    		    if(!baccept){
+				minval<-10;maxval<-10
+				if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ) {minval<-log(minval);maxval<-log(maxval)}
+				par[[j]][[k]]<-stats::runif(1,min= (-1)*minval, max=maxval)
+			    }
+			    else{par[[j]][[k]]<-par[[j]][[k]]+stats::rnorm(1,sd=ABCdist*par0[[j]]$abcstepsd[k])}
+			if (!(is.null(par0[[j]]$positivevars)) && (par0[[j]]$positivevars[k]) ){par[[j]][[k]]<-exp(par[[j]][[k]])}
+			if (names(par[[j]])[k]=="a") {adone<-TRUE}
+			if (names(par[[j]])[k]=="s") {sdone<-TRUE}
+		    }
+		}
+	    }
+	}
+    }
+    par
+}
+
+draw_phylproc<-function(simulobj){
+    tree.ape<-simulobj$tree
+    phenotype.trajectory<-simulobj$phenotype
+    root.branch.phenotype<-simulobj$root.branch.phenotype
+    PhylTraitProcess<-vector("list",1)
+    names(PhylTraitProcess)<-"FullTrajectory"
+    tree.height<-tree.ape$tree.height
+    if (length(phenotype.trajectory)>0){
+	PhylTraitProcess$FullTrajectory<-sapply(1:length(phenotype.trajectory),function(i,phenotype.trajectory,tree.ape,tree.height){
+					mData<-t(phenotype.trajectory[[i]])
+					mData[,1]<-mData[,1]+(tree.height-tree.ape$node.heights[which(tree.ape$node.heights[,1]==tree.ape$edge[i,1]),2])				    
+					list(trajectory=mData)
+					},phenotype.trajectory=phenotype.trajectory,tree.ape=tree.ape,tree.height=tree.height,simplify=FALSE)
+    }
+    PhylTraitProcess$FullTrajectory[[length(phenotype.trajectory)+1]]<-list(trajectory=t(root.branch.phenotype))
+    utils::capture.output(mvSLOUCH::drawPhylProcess(PhylTraitProcess,plotlayout=c(1,nrow(simulobj$phenotype[[1]])-1)))
+    NA
+}
+
+.create_tree_backbone<-function(tree.height){
+    tree.ape<-vector("list",8)
+    names(tree.ape)<-c("edge","tip.label","edge.length","Nnode","node.label" ,"root.edge","node.heights","tree.height")
+    tree.ape$edge<-matrix(c(2,1),nrow=1,ncol=2)
+    tree.ape$node.heights<-rbind(c(2,tree.height),c(1,0))
+    tree.ape$tip.label<-c(1)
+    tree.ape$tree.height<-tree.height
+    tree.ape$edge.length<-tree.height
+    tree.ape$Nnode<-1
+    tree.ape$node.label<-c(2)
+    tree.ape$root.edge<-0
+    class(tree.ape)<-"phylo"
+    tree.ape
+}
+
+.add_first_split<-function(tree.ape,split.time,branch.length=NULL){
+    if ((length(tree.ape$tip.label)!=1)||(tree.ape$edge.length[1]<split.time)){tree.ape<-NA}
+    else{
+	tree.ape$root.edge<-split.time	
+	tree.ape$edge[which(tree.ape$edge>1)]<-tree.ape$edge[which(tree.ape$edge>1)]+1 ## there is only the backbone
+	tree.ape$node.heights[which(tree.ape$node.heights[,1]>1),1]<-tree.ape$node.heights[which(tree.ape$node.heights[,1]>1),1]+1
+	tree.ape$node.label<-tree.ape$node.label+1
+	tree.ape$tip.label<-c(tree.ape$tip.label,max(tree.ape$tip.label)+1)	
+	tree.ape$node.heights[1,1]<-0
+	tree.ape$node.heights<-	rbind(tree.ape$node.heights,c(max(tree.ape$node.label),tree.ape$edge.length-split.time),c(max(tree.ape$tip.label),0))
+	tree.ape$edge<-rbind(tree.ape$edge,c(max(tree.ape$node.label),max(tree.ape$tip.label)))
+	tree.ape$edge.length<-rep(tree.ape$edge.length-split.time,2)
+	if (!is.null(branch.length)){
+	    tree.ape$node.heights[nrow(tree.ape$node.heights),2]<-tree.ape$edge.length[2]-branch.length
+	    tree.ape$edge.length[2]<-branch.length
+	}
+    }
+    tree.ape
+}
+
+.add_tip_to_branch<-function(tree.ape,branch.number,split.time,branch.length=NULL){
+    if((length(tree.ape$edge.length)<branch.number)||(tree.ape$edge.length[branch.number]<split.time)){tree.ape<-NA}
+    else{
+	numtips<-length(tree.ape$tip.label)    
+	tree.ape$edge[which(tree.ape$edge>numtips)]<-tree.ape$edge[which(tree.ape$edge>numtips)]+1 ## there is only the backbone
+	tree.ape$node.label<-tree.ape$node.label+1
+        tree.ape$node.label<-c(tree.ape$node.label,max(tree.ape$node.label)+1)
+	tree.ape$tip.label<-c(tree.ape$tip.label,max(tree.ape$tip.label)+1)	
+	tree.ape$node.heights[which(tree.ape$node.heights[,1]>numtips),1]<-tree.ape$node.heights[which(tree.ape$node.heights[,1]>numtips),1]+1
+	tree.ape$node.heights<-rbind(tree.ape$node.heights,c(max(tree.ape$node.label),tree.ape$node.heights[which(tree.ape$node.heights[,1]==tree.ape$edge[branch.number,1]),2]-split.time),c(max(tree.ape$tip.label),0))        
+	tree.ape$edge<-rbind(tree.ape$edge,c(max(tree.ape$node.label),tree.ape$edge[branch.number,2]),c(max(tree.ape$node.label),max(tree.ape$tip.label)))
+        tree.ape$edge[branch.number,2]<-max(tree.ape$node.label)
+    	tree.ape$edge.length<-c(tree.ape$edge.length,
+    	tree.ape$edge.length[branch.number]-split.time,
+	tree.ape$node.heights[nrow(tree.ape$node.heights)-1,2])
+	tree.ape$edge.length[branch.number]<-split.time
+        if (!is.null(branch.length)){
+	    tree.ape$node.heights[nrow(tree.ape$node.heights),2]<-tree.ape$edge.length[length(tree.ape$edge.length)]-branch.length
+	    tree.ape$edge.length[length(tree.ape$edge.length)]<-branch.length
+	}
+	tree.ape$Nnode<-tree.ape$Nnode+1
+    }
+    tree.ape
+}
+
+
+.mark_bd_events_on_branch<-function(phenotype.trajectory,fbirth,fdeath=NULL,fbirth.params=NULL,fdeath.params=NULL,simul.params=NULL){
+    death.rates<-NULL
+    death.moment<-NULL
+    if (!is.null(fdeath)){
+	death.rates<-rbind(phenotype.trajectory[1,],apply(phenotype.trajectory,2,fdeath,params=fdeath.params,sde.params=simul.params)) ## we assume rates not depend on past, only maybe on time
+	death.events<-.simulate_nonhomo_Poisson(death.rates)
+	if (!is.na(death.events[1])){death.moment<-min(death.events)}
+    }
+    if (!is.null(death.moment)){phenotype.trajectory<-phenotype.trajectory[,which(phenotype.trajectory[1,]<=death.moment)]}
+    birth.rates<-rbind(phenotype.trajectory[1,],apply(phenotype.trajectory,2,fbirth,params=fbirth.params,sde.params=simul.params)) ## we assume rates not depend on past, only maybe on time
+    birth.events<-.simulate_nonhomo_Poisson(birth.rates)
+    list(births=birth.events,death=death.moment)
+}
+
+
+.simulate_nonhomo_Poisson<-function(rates){
+    L<-max(rates[2,])
+    events<-c()
+    tryCatch({
+	Poisson.events<-.simulate_homo_Poisson(max(rates[1,]),L)
+	if (length(Poisson.events)>0){
+	    event.times<-sapply(Poisson.events,function(x,times,probs){
+			p<-probs[max(which(times<=x))]
+			sample(c(FALSE,TRUE),1,prob=c(1-p,p))		    
+		    },times=rates[1,],probs=rates[2,]/L)
+	    events<-Poisson.events[event.times]
+	}
+    },error=function(e){print(paste("Error in simulating events on branch",e,"rates=",rates))})
+    if (length(events)==0){events<-NA}
+    events
+}
+
+.simulate_homo_Poisson<-function(Tmax,L){
+    event.times<-Tmax+1
+    tryCatch({
+	if (L>0){event.times<-stats::rexp(1,L)}
+	s<-5
+	while(sum(event.times)<Tmax){
+	    event.times<-c(event.times,stats::rexp(as.integer(s*L*Tmax)+1,L))
+	    s<-2 
+	}
+	event.times<-cumsum(event.times)    
+    },error=function(e){print(paste("Error in simulating events on branch",e,"Tmax=",Tmax,"L=",L))})
+    event.times[which(event.times<=Tmax)]
+}
+
+simulate_phylproc<-function(tree.height,simul.params,X0,fbirth,fdeath=NULL,fbirth.params=NULL,fdeath.params=NULL,fsimulphenotype="sde.yuima",n.contemporary=-1,n.tips.total=1000,step=NULL){
+    if (is.character(fbirth)){
+	fbirth<-switch(fbirth,
+	    rate_id=.f_rate_id,
+	    rate_const=.f_rate_const,
+	    OU2d_optim_diff=.f_rate_OU2d_optim_diff,
+	    poly_diff_2=.f_rate_poly_diff_2)
+    }
+    
+    if (n.contemporary> n.tips.total){n.tips.total = -1}
+    if (is.null(step)){step<-min(0.001,tree.height/1000)} 
+    if ((!is.function(fsimulphenotype))&&(is.character(fsimulphenotype))&&(fsimulphenotype=="sde.yuima")){fsimulphenotype<-simulate_sde_on_branch}
+    root.branch.phenotype<-NULL
+    tree.ape<-.create_tree_backbone(tree.height)
+    lphenotype<-list()
+    lphenotype[[1]]<-.simulate_phenotype_on_branch(tree.height,fsimulphenotype,simul.params,X0,step)
+    lspeciations<-list()
+    lspeciations[[1]]<-.mark_bd_events_on_branch(lphenotype[[1]],fbirth,fdeath,fbirth.params,fdeath.params,simul.params)$births ## we assume that the backbone cannot die
+    next.speciation.branch<-1
+    numbranches<-1
+    root.branch.phenotype<-c()
+    if ((!is.na(lspeciations[[1]][1])) && (n.contemporary!=1) && (n.tips.total!=1)){
+	root.branch.phenotype<-lphenotype[[1]][,which(lphenotype[[1]][1,]<=lspeciations[[1]][1])]
+        if (is.vector(root.branch.phenotype)){root.branch.phenotype<-matrix(root.branch.phenotype,ncol=1)}
+        lphenotype[[1]]<-lphenotype[[1]][,which(lphenotype[[1]][1,]>=lspeciations[[1]][1])]
+        if(is.vector(lphenotype[[1]])){lphenotype[[1]]<-matrix(lphenotype[[1]],ncol=1)}
+	lphenotype[[1]][1,]<-lphenotype[[1]][1,]-lphenotype[[1]][1,1]
+	if(is.vector(lphenotype[[1]])){lphenotype[[1]]<-matrix(lphenotype[[1]],ncol=1)}
+	lphenotype[[2]]<-.simulate_phenotype_on_branch(tree.height-lspeciations[[1]][1],fsimulphenotype,simul.params,root.branch.phenotype[-1,ncol(root.branch.phenotype)],step)
+	newbds<-.mark_bd_events_on_branch(lphenotype[[2]],fbirth,fdeath,fbirth.params,fdeath.params,simul.params)
+	lspeciations[[2]]<-newbds$births
+	tree.ape<-.add_first_split(tree.ape,lspeciations[[1]][1],branch.length=newbds$death)
+	if((!is.na(lspeciations[[1]][1]))&&(length(lspeciations[[1]])>1)){lspeciations[[1]]<-lspeciations[[1]]-lspeciations[[1]][1];lspeciations[[1]]<-lspeciations[[1]][-1]}
+	else{lspeciations[[1]]<-NA}
+	
+	if ((n.tips.total==2) || ((n.contemporary==2)&&(is.null(newbds$death)))){
+	    next.speciation.branch<- 0
+	}else{
+	    if ((!is.na(lspeciations[[2]][1])) && ( (is.na(lspeciations[[1]][1])) || (lspeciations[[2]][1]<lspeciations[[1]][1])))
+		{next.speciation.branch<-2}
+	    else{
+		if (is.na(lspeciations[[1]][1])){next.speciation.branch<-0}
+	    }	
+	}
+
+	if (is.null(newbds$death)){num.contemporary.tips<-2}
+	else{num.contemporary.tips<-1}
+	numbranches<-2
+	
+	while (next.speciation.branch[1] !=0 ){
+	    lphenotype[[numbranches+1]]<-lphenotype[[next.speciation.branch]][,which(lphenotype[[next.speciation.branch]][1,]>=lspeciations[[next.speciation.branch]][1])]
+	    if(is.vector(lphenotype[[numbranches+1]])){lphenotype[[numbranches+1]]<-matrix(lphenotype[[numbranches+1]],ncol=1)}
+	    lphenotype[[numbranches+1]][1,]<-lphenotype[[numbranches+1]][1,] - lphenotype[[numbranches+1]][1,1]
+	    if(is.vector(lphenotype[[numbranches+1]])){lphenotype[[numbranches+1]]<-matrix(lphenotype[[numbranches+1]],ncol=1)}
+	    lphenotype[[next.speciation.branch]]<-lphenotype[[next.speciation.branch]][,which(lphenotype[[next.speciation.branch]][1,]<=lspeciations[[next.speciation.branch]][1])]
+	    if (is.vector(lphenotype[[next.speciation.branch]])){lphenotype[[next.speciation.branch]]<-matrix(lphenotype[[next.speciation.branch]],ncol=1)}
+	    if (ncol(lphenotype[[next.speciation.branch]])>0){
+		lphenotype[[numbranches+2]]<-.simulate_phenotype_on_branch(tree.ape$node.heights[which(tree.ape$node.heights[,1]==tree.ape$edge[next.speciation.branch,1]),2]-lspeciations[[next.speciation.branch]][1],fsimulphenotype,simul.params,lphenotype[[next.speciation.branch]][-1,ncol(lphenotype[[next.speciation.branch]])],step)
+	    }else{
+		j<-next.speciation.branch
+		while((ncol(lphenotype[[next.speciation.branch]])==0)&&(j>num.contemporary.tips+1)){
+		    j<-which(tree.ape$edge[,2]==tree.ape$edge[j,1])
+		}
+		if(j>num.contemporary.tips+1){X0<-lphenotype[[j]][-1,ncol(lphenotype[[j]])]}
+		else{X0<-root.branch.phenotype[-1,ncol(root.branch.phenotype)]}
+		lphenotype[[numbranches+2]]<-.simulate_phenotype_on_branch(tree.ape$node.heights[which(tree.ape$node.heights[,1]==tree.ape$edge[next.speciation.branch,1]),2]-lspeciations[[next.speciation.branch]][1],fsimulphenotype,simul.params,X0,step)
+	    }
+	    newbds<-.mark_bd_events_on_branch(lphenotype[[numbranches+2]],fbirth,fdeath,fbirth.params,fdeath.params,simul.params)	
+	    tree.ape<-.add_tip_to_branch(tree.ape,next.speciation.branch,lspeciations[[next.speciation.branch]][1],branch.length=newbds$death)
+	    if((!is.na(lspeciations[[next.speciation.branch]][1]))&&(length(lspeciations[[next.speciation.branch]])>1)){lspeciations[[next.speciation.branch]]<-lspeciations[[next.speciation.branch]]-lspeciations[[next.speciation.branch]][1];lspeciations[[numbranches+1]]<-lspeciations[[next.speciation.branch]][-1]}
+	    else{lspeciations[[numbranches+1]]<-NA}
+	    lspeciations[[numbranches+2]]<-newbds$births
+	    lspeciations[[next.speciation.branch]]<-NA
+	    numbranches<-numbranches+2
+	    if (is.null(newbds$death)){num.contemporary.tips<-num.contemporary.tips+1}		
+	    if ((n.tips.total==(tree.ape$Nnode+1)) || (n.contemporary==num.contemporary.tips)){next.speciation.branch<- 0 }
+	    else{	
+		next.speciation.branch<- 0
+		start.times<-sapply(lspeciations,function(x){res<-NA;if(length(x)>0){res<-x[1]};res})
+		if(length(which(is.na(start.times)))<length(start.times)){
+		    next.speciation.branch<-which(start.times==min(start.times,na.rm=TRUE))[1]
+		}
+	    }	
+	    
+	}
+    }else{
+	root.branch.phenotype<-lphenotype[[1]]
+	lphenotype<-list()
+	print("Warning no speciation occurred during simulation")
+    }
+    list(tree=tree.ape,phenotype=lphenotype,root.branch.phenotype=root.branch.phenotype)
+}
+
